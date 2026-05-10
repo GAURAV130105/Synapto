@@ -4,7 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 const GROQ_API_KEY = process.env.GROQ_API_KEY
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
-const SIMPLIFICATION_PROMPTS = {
+const SIMPLIFICATION_PROMPTS: Record<string, string> = {
+  /** UI sends `basic` */
+  basic: `Rewrite this text in the simplest possible way. Use short sentences, common words, and explain any difficult concepts. Aim for a 6-8 grade reading level.`,
   beginner: `Rewrite this text in the simplest possible way. Use short sentences, common words, and explain any difficult concepts. Aim for a 6-8 grade reading level.`,
   intermediate: `Simplify this text while keeping most of the original meaning. Use clearer language and shorter sentences where possible. Aim for a 9-11 grade reading level.`,
   advanced: `Keep the text as is, maintaining the original academic language and meaning.`,
@@ -31,16 +33,40 @@ export async function POST(request: NextRequest) {
 
     // Use Groq for text simplification
     if (!GROQ_API_KEY) {
-      // Fallback mock response if API key not configured
-      console.warn('[API] GROQ_API_KEY not configured, returning mock response')
+      // Deterministic fallbacks so Basic / Intermediate / Advanced still differ without Groq
+      const len = text.length
+      const basicFallback =
+        text
+          .split(/[.!?]+/)
+          .filter((s: string) => s.trim())
+          .slice(0, 2)
+          .map((s: string) => s.trim())
+          .join('. ') + (text.includes('.') ? '.' : '')
+      const intermediateFallback =
+        len > 500
+          ? (() => {
+              const cut = text.slice(0, 500)
+              const lp = cut.lastIndexOf('.')
+              return lp > 80 ? cut.slice(0, lp + 1) : cut
+            })()
+          : text
+
+      const simplifiedFallback =
+        level === 'advanced'
+          ? text
+          : level === 'intermediate'
+            ? intermediateFallback
+            : basicFallback || text.slice(0, 280)
+
+      console.warn('[API] GROQ_API_KEY not configured, returning local simplified text')
       return NextResponse.json({
-        simplified: text, // In production, this should call Groq API
+        simplified: simplifiedFallback,
         message: 'API key not configured. Please set GROQ_API_KEY environment variable.',
       })
     }
 
     const prompt =
-      SIMPLIFICATION_PROMPTS[level as keyof typeof SIMPLIFICATION_PROMPTS] ||
+      SIMPLIFICATION_PROMPTS[level] ||
       SIMPLIFICATION_PROMPTS.intermediate
 
     const response = await fetch(GROQ_API_URL, {

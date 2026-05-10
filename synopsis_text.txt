@@ -1,0 +1,189 @@
+                                                                SYNOPSIS
+                                                                                ON
+Inclusive Education & Accessibility Enablement System
+
+PROJECT WORK
+
+Submitted by
+
+GAURAV SINGH 
+                                                               DD231104307014
+
+ABHAY SACHAN 
+DD231104307010
+
+ANSHIKA BIJALWAN
+DD231104307008
+
+
+Under the Supervision of
+
+Dr. VIBHOR SHARMA
+(Department of Computer Science & Engineering)
+                                                                           
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DEPARTMENT OF COMPUTER SCIENCE & ENGINEERING
+SCHOOL OF SCIENCE & TECHNOLOGY
+SWAMI RAMA HIMALAYAN UNIVERSITY
+SWAMI RAM NAGAR, JOLLY GRANT – 248016, UTTARAKHAND
+                                                                Even Semester, 2025-26
+                                                        DECLARATION
+
+
+
+We hereby declare that the Project Assignment Synopsis entitled " Inclusive Education & Accessibility Enablement System" submitted in partial fulfillment of the requirements for the B.Tech (Computer Science and Engineering / AIML) programme at the School of Science and Technology, Swami Rama Himalayan University (SRHU), Jolly Grant, Dehradun, is a record of the proposed work to be carried out by us under the guidance of  Dr Vibhor Sharma.
+
+We further declare that the work reported in this synopsis has not been submitted and will not be submitted, either in part or in full, for the award of any other degree or diploma in this institute or any other institute or university.
+
+
+Signature: _________________                             Signature: _______________________
+Name:    GAURAV SINGH                                   Name:      ABHAY SACHAN 
+DD No.:   DD231104307014                                  DD No.:   DD231104307010
+
+Signature: _______________  
+Name:   ANSHIKA BIJALWAN               
+DD No.:   DD231104307008                      
+
+
+Project Guide
+Signature: _______________________
+Name:   Dr. VIBHOR SHARMA
+School of Science and Technology
+SRHU, Jolly Grant, Dehradun
+
+1. Introduction
+The global educational ecosystem is currently traversing a critical juncture where the rapid digitalization of content has outpaced the implementation of inclusive design. As of 2025, over 16 per cent of the global population—representing more than one billion individuals—lives with some form of disability. For these learners, digital technology is not merely a convenience but a vital lifeline that determines their ability to participate in the modern economy. 
+
+
+Education is often described as the most powerful tool for personal growth and social progress. In recent years, digital learning platforms have made education more accessible than ever before. Students can now learn from online courses, video lectures, and digital textbooks from anywhere in the world. However, despite these advancements, many students with disabilities still face significant challenges when accessing educational content online.
+
+For example, a deaf student watching an online lecture may struggle to understand the material if sign language interpretation is not available. A visually impaired student may encounter diagrams, charts, or images that cannot be interpreted by screen readers. Similarly, students with dyslexia or other cognitive learning differences often find it difficult to process complex academic language or stay focused on content that is not designed with their needs in mind.
+While many modern learning platforms provide features such as subtitles or transcripts, these solutions often address only a small part of the problem. Accessibility tools are frequently added as optional features rather than being integrated into the core design of the learning system. As a result, many students are still left with learning environments that are not fully adapted to their abilities.
+
+This project introduces Synapto, an AIpowered inclusive education platform designed to bridge this gap. The idea behind Synapto is simple but powerful: instead of expecting students to adapt to the system, the system should adapt to the student. The platform uses modern technologies such as artificial intelligence, natural language processing, and 3D avatar animation to transform educational content into formats that are easier to understand and interact with.
+
+Through features such as sign language avatars for deaf learners, audio narration for visually impaired users, simplified text for students with reading difficulties, and distractionfree focus modes for neurodivergent learners, Synapto aims to create a more inclusive digital learning experience.
+
+The ultimate goal of this project is to demonstrate how intelligent technology can help remove barriers in education and ensure that learning opportunities are accessible to everyone, regardless of their abilities.
+
+However, persistent challenges in digital readiness, inadequate infrastructure, and the high cost of specialized tools continue to bridge a divide that threatens to marginalize vulnerable populations. 
+
+The Synapto project is conceptualized as a comprehensive, AI-powered inclusive learning platform that addresses these barriers by embedding accessibility directly into the core of the educational experience.
+
+2. Literature Review
+Several research studies and platforms have attempted to address accessibility in digital education.
+Online learning platforms such as Coursera, Udemy, and Khan Academy provide subtitles and transcripts to improve accessibility. However, these solutions are limited as they do not dynamically adapt content for different cognitive and sensory needs.
+Research in assistive technologies has explored sign language avatars, which convert text into sign language animations for deaf users. Projects such as JASigning demonstrate the feasibility of avatarbased sign communication. However, many of these systems are not integrated into mainstream educational platforms.
+Other studies focus on text simplification using Natural Language Processing (NLP) to help learners with dyslexia or cognitive difficulties understand complex content. Additionally, screen readers and texttospeech technologies have been developed to assist visually impaired users.
+Despite these advancements, most solutions focus on singledisability support rather than a unified adaptive learning platform.
+Therefore, there is a need for a system that integrates multiple accessibility technologies within one intelligent platform, enabling dynamic adaptation of educational content.
+
+
+3. Problem Statement
+Despite the theoretical promise of digital learning, several critical barriers prevent the realization of a truly inclusive educational landscape.
+
+3.1 Structural Inequities and the Digital Divide
+A significant portion of the student population remains excluded due to socio-economic factors. In the United States, roughly 15% of households with school-age children lack high-speed internet, a figure that is starkly higher in low-income and rural communities. This "digital divide" is compounded by the high cost of premium AI tools—often reaching $1,000 per year—which 50% of higher education institutions fail to cover through institution-wide licenses. Consequently, the very technology intended to foster equity may create new layers of disadvantage for low-income students with disabilities.
+
+3.2 Technical Bottlenecks in Contemporary Learning Management Systems
+
+Most existing Learning Management Systems (LMS) were designed for a neurotypical, able-bodied audience, with accessibility features often treated as an "afterthought" or a "compliance checkbox". Key deficiencies include:
+
+Lack of Native Sign Language Support: Current platforms rely on subtitles, which are often insufficient for DHH students whose primary language is SL, which has a fundamentally different grammar.
+Inadequate Neurodiverse Considerations: Rigid course structures and distracting UI elements (like global motion or complex layouts) can trigger sensory overload or anxiety for students with ADHD and Autism.
+The "Resolution Gap": While automated accessibility checkers can surface basic errors, they often overlook critical usability issues that only expert testing or real-world user feedback can uncover.
+
+3.3 The Emotional and Cognitive Toll of Inaccessible Content
+Students with learning disabilities (LD) report spending more hours studying than their peers while rating their academic ability lower, leading to a "negative cycle" of failure, anxiety, and frustration. Online courses, in particular, have historically seen a 10% to 20% higher failure rate than traditional courses, with 40% to 80% of students dropping their online modules. The transition to emergency remote learning during the pandemic further exposed these gaps, with 67% of special education administrators reporting significant challenges in maintaining IEP compliance in virtual spaces.
+
+4. Objectives of the Project
+The Synapto project is defined by a set of clear technical, pedagogical, and compliance-oriented goals.
+
+
+
+
+
+4.1 Strategic Technical Targets
+
+Integrated Multi-Modal Engine: To develop a unified AI pipeline that converts spoken or written text into photorealistic 3D sign language .
+
+
+Dynamic UI Adaptation: To implement a real-time "Matchmaking" reasoner that adjusts interface complexity, color contrast, and navigation based on user profiles and cognitive load indicators.
+
+
+
+4.2 Pedagogical Goals and Learner Empowerment
+
+Executive Function Scaffolding: To provide neurodivergent students  to reduce the cognitive load on working memory and overcome initiation hurdles.
+
+
+Autonomy and Agency: To empower learners to customize their own sensory environments—adjusting avatar styles (cartoon vs. photorealistic), and selecting audio focus tracks .
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5. Proposed Methodology / Approach
+The proposed system will follow a modular architecture consisting of the following components:
+1. Content Input Module
+The platform will allow users to upload educational materials such as:
+PDF documents
+YouTube lecture videos
+Text-based educational content
+These inputs will be processed and stored in a database.
+2. AI Processing Module
+The AI engine will analyze and transform the content using:
+Natural Language Processing (NLP) for text simplification
+Speech processing for generating audio narration
+Computer graphics techniques for rendering sign language animations
+3. Sign Language Avatar Module
+A 3D avatar will be created using tools such as Ready Player Me, Mixamo, and Blender.The avatar will display sign language gestures corresponding to the processed text.
+4. Adaptive Learning Interface
+The system will provide accessibility features including:
+Focus mode for distractionfree reading
+Adjustable text size and contrast
+Dyslexia-friendly fonts
+Simplified content views
+5. Web Application Layer
+The platform will be developed using modern web technologies:
+Frontend:
+Next.js
+React
+Tailwind CSS
+Backend:
+Node.js API
+Supabase PostgreSQL database
+3D rendering:
+React Three Fiber
+Three.js
+
+6. Expected Outcomes
+The expected outcomes of this project include:
+Development of an AI-powered inclusive learning platform.
+Implementation of a 3D sign language avatar system capable of translating text into sign gestures.
+Integration of text simplification and audio narration tools for improved accessibility.
+Creation of a user-friendly web application that adapts educational content for diverse learners.
+Improvement in accessibility and learning comprehension for students with disabilities.
+The system will demonstrate how AI and interactive technologies can be used to make digital education more inclusive and adaptive.
+
+
+7. References
+
+

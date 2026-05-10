@@ -144,15 +144,25 @@ export async function POST(request: NextRequest) {
     if (!force) {
       const { data: existing } = await supabase
         .from('content')
-        .select('transcript, transcript_status')
+        .select('transcript, transcript_status, transcript_segments')
         .eq('id', content_id)
         .single()
 
       if (existing?.transcript && ['completed', 'unavailable'].includes(existing.transcript_status)) {
+        let cachedSegments: TranscriptSegment[] = []
+        const rawSeg = (existing as { transcript_segments?: string | null }).transcript_segments
+        if (rawSeg) {
+          try {
+            const parsed = JSON.parse(rawSeg)
+            if (Array.isArray(parsed)) cachedSegments = parsed
+          } catch {
+            /* ignore */
+          }
+        }
         console.log(`[Transcript] Cache hit for ${video_id} (status: ${existing.transcript_status})`)
         return NextResponse.json({
           transcript: existing.transcript,
-          segments: [],
+          segments: cachedSegments,
           status: existing.transcript_status,
           method: 'cached',
         })
@@ -170,25 +180,41 @@ export async function POST(request: NextRequest) {
     let method = ''
 
     // ── Method 1: youtube-transcript package (returns timestamped items) ──
-    try {
-      const transcriptItems = await YoutubeTranscript.fetchTranscript(video_id, { lang: 'en' })
-      if (transcriptItems && transcriptItems.length > 0) {
-        // Build raw caption items preserving original timestamps
-        const rawItems: RawCaptionItem[] = transcriptItems
-          .map(item => ({
-            startTime: item.offset / 1000, // Convert ms to seconds
-            duration: item.duration / 1000,
-            text: cleanText(item.text),
-          }))
-          .filter(item => item.text.length > 0)
+    const youtubeLangAttempts: Array<{ lang?: string } | undefined> = [
+      undefined, // first available track (often matches the video)
+      { lang: 'en' },
+      { lang: 'en-US' },
+      { lang: 'en-GB' },
+    ]
+    for (const cfg of youtubeLangAttempts) {
+      if (transcript) break
+      try {
+        const transcriptItems =
+          cfg === undefined
+            ? await YoutubeTranscript.fetchTranscript(video_id)
+            : await YoutubeTranscript.fetchTranscript(video_id, cfg)
+        if (transcriptItems && transcriptItems.length > 0) {
+          const rawItems: RawCaptionItem[] = transcriptItems
+            .map(item => ({
+              startTime: item.offset / 1000,
+              duration: item.duration / 1000,
+              text: cleanText(item.text),
+            }))
+            .filter(item => item.text.length > 0)
 
-        // Group into natural sentence-like segments
-        segments = groupIntoSegments(rawItems)
-        transcript = segments.map(s => s.text).join(' ')
-        method = 'youtube_captions'
+          segments = groupIntoSegments(rawItems)
+          transcript = segments.map(s => s.text).join(' ')
+          method = 'youtube_captions'
+          break
+        }
+      } catch (err) {
+        console.warn(
+          `[Transcript] youtube-transcript${cfg?.lang ? ` (${cfg.lang})` : ''} failed for ${video_id}: ${(err as Error).message}`
+        )
       }
-    } catch (err) {
-      console.warn(`[Transcript] Primary method failed for ${video_id}: ${(err as Error).message} — trying fallbacks...`)
+    }
+    if (!transcript) {
+      console.warn(`[Transcript] All youtube-transcript language attempts failed for ${video_id} — trying fallbacks...`)
     }
 
     // ── Method 2: Piped API (privacy-friendly YouTube proxy) ──

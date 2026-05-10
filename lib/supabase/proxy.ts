@@ -58,8 +58,14 @@ export async function updateSession(request: NextRequest) {
       url.pathname = '/auth/login'
       return NextResponse.redirect(url)
     }
-  } catch (error) {
-    console.error('[v0] Supabase middleware error:', error)
+  } catch (error: any) {
+    // Suppress noisy "fetch failed" / network errors (e.g. Supabase project paused).
+    // status: 0 means the server couldn't be reached at all — not an app bug.
+    const isNetworkError =
+      error?.__isAuthError === true && error?.status === 0
+    if (!isNetworkError) {
+      console.error('[v0] Supabase middleware error:', error)
+    }
     // Continue with the request even if Supabase fails
   }
 

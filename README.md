@@ -78,7 +78,16 @@ npm install
 ```
 
 2. **Set up environment variables:**
-Create `.env.local`:
+Copy `.env.example` to `.env.local` and update values:
+```bash
+cp .env.example .env.local
+```
+or on Windows PowerShell:
+```powershell
+Copy-Item .env.example .env.local
+```
+
+Then edit `.env.local`:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_key
@@ -93,6 +102,11 @@ npm run dev
 
 4. **Open in browser:**
 Navigate to `http://localhost:3000`
+
+5. **Run PRD prerequisite check:**
+```bash
+npm run check:prd
+```
 
 ## 📖 Usage Guide
 

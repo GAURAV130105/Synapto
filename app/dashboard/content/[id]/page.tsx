@@ -1,14 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Loader2, Volume2, Eye, BookOpen, Hand, Clock, Search, Download, Box, Layers } from 'lucide-react'
+import { Loader2, Volume2, Eye, BookOpen, Hand, Clock, Search, Download, X } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { SignLanguageAvatar } from '@/components/features/sign-language-avatar'
 import { AudioNarrative } from '@/components/features/audio-narrative'
 import { LanguageLeveler } from '@/components/features/language-leveler'
 import { FocusMode } from '@/components/features/focus-mode'
@@ -63,6 +62,13 @@ export default function ContentViewerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSegment, setActiveSegment] = useState<number>(-1)
   const [showTimestamps, setShowTimestamps] = useState(true)
+  const [avatarPlaying, setAvatarPlaying] = useState(false)
+  const [activeTab, setActiveTab] = useState('transcript')
+  const [manualTranscriptDraft, setManualTranscriptDraft] = useState('')
+  const [isSavingManualTranscript, setIsSavingManualTranscript] = useState(false)
+  /** Picture-in-picture interpreter over the video (hidden on Sign Language tab to avoid duplicate canvas) */
+  const [cornerInterpreterOpen, setCornerInterpreterOpen] = useState(true)
+  const [pipPlaying, setPipPlaying] = useState(true)
   const segmentRefs = useRef<(HTMLDivElement | null)[]>([])
 
   // Fetch content from Supabase
@@ -105,6 +111,10 @@ export default function ContentViewerPage() {
     fetchContent()
   }, [contentId])
 
+  const transcriptFetchFailedNotice =
+    transcript.trim().length > 0 &&
+    transcript.includes('could not be automatically retrieved')
+
   // Fetch transcript from YouTube
   const fetchTranscript = async (contentData: ContentData) => {
     if (!contentData.youtube_url) return
@@ -128,10 +138,13 @@ export default function ContentViewerPage() {
       })
 
       const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Transcript request failed')
+      }
       if (data.transcript) {
         setTranscript(data.transcript)
         setTranscriptStatus(data.status || 'completed')
-        if (data.segments && Array.isArray(data.segments)) {
+        if (data.segments && Array.isArray(data.segments) && data.segments.length > 0) {
           setSegments(data.segments)
         }
       }
@@ -174,6 +187,36 @@ export default function ContentViewerPage() {
     }
   }
 
+  const saveManualTranscript = async () => {
+    const text = manualTranscriptDraft.trim()
+    if (!text || !content) return
+    setIsSavingManualTranscript(true)
+    try {
+      const res = await fetch(`/api/content/${content.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: text }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save transcript')
+      }
+      setTranscript(text)
+      setTranscriptStatus('completed')
+      setSegments([])
+      setSimplifiedText('')
+      setManualTranscriptDraft('')
+      setContent((prev) =>
+        prev ? { ...prev, transcript: text, transcript_status: 'completed' } : prev
+      )
+    } catch (e: unknown) {
+      console.error(e)
+      setError(e instanceof Error ? e.message : 'Could not save transcript')
+    } finally {
+      setIsSavingManualTranscript(false)
+    }
+  }
+
   // Extract YouTube video ID
   const extractVideoId = (url: string | null) => {
     if (!url) return null
@@ -190,7 +233,7 @@ export default function ContentViewerPage() {
   const handleTimestampClick = (segment: TranscriptSegment, index: number) => {
     setActiveSegment(index)
     // Try to seek the YouTube iframe
-    const iframe = document.querySelector('iframe') as HTMLIFrameElement
+    const iframe = document.getElementById('content-youtube-embed') as HTMLIFrameElement | null
     if (iframe && content?.youtube_url) {
       const videoId = extractVideoId(content.youtube_url)
       if (videoId) {
@@ -222,6 +265,20 @@ export default function ContentViewerPage() {
     URL.revokeObjectURL(url)
   }
 
+  const transcriptForFeatures =
+    transcriptFetchFailedNotice ? '' : transcript || ''
+
+  const signingText = useMemo(() => {
+    if (!content) return ''
+    const raw =
+      simplifiedText ||
+      transcriptForFeatures ||
+      content.title ||
+      ''
+    const words = raw.trim().split(/\s+/)
+    return words.slice(0, 200).join(' ')
+  }, [content, simplifiedText, transcriptForFeatures, content?.title])
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -241,25 +298,75 @@ export default function ContentViewerPage() {
   const embedUrl = getYoutubeEmbedUrl(content.youtube_url)
   const displayTranscript = transcript || ''
 
+  const showCornerInterpreter =
+    Boolean(embedUrl) &&
+    cornerInterpreterOpen &&
+    activeTab !== 'avatar' &&
+    signingText.trim().length > 0
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-6xl mx-auto space-y-8">
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* Video Player */}
-      <Card className="overflow-hidden">
-        <div className="aspect-video bg-black relative">
+      {/* Video + corner sign-language interpreter (PiP-style) */}
+      <Card className="overflow-hidden ring-1 ring-border/60 shadow-xl">
+        <div className="aspect-video bg-black relative isolate">
           {embedUrl ? (
-            <iframe
-              src={embedUrl}
-              className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              title={content.title}
-            />
+            <>
+              <iframe
+                id="content-youtube-embed"
+                src={embedUrl}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={content.title}
+              />
+              {showCornerInterpreter && (
+                <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 z-20 w-[min(92vw,320px)] pointer-events-auto">
+                  <div className="rounded-xl overflow-hidden ring-2 ring-teal-500/50 shadow-2xl shadow-black/80 bg-[#0a1628] backdrop-blur-sm">
+                    <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-slate-900/95 border-b border-teal-500/25">
+                      <span className="text-[11px] font-semibold text-teal-300/90 uppercase tracking-wide flex items-center gap-1.5">
+                        <Hand className="w-3.5 h-3.5 text-teal-400" />
+                        Sign interpreter
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCornerInterpreterOpen(false)}
+                        className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/80 transition-colors"
+                        aria-label="Hide sign interpreter"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="p-1.5 pt-0">
+                      <SignLanguage3D
+                        variant="pip"
+                        text={signingText}
+                        isPlaying={pipPlaying}
+                        onPlayPause={setPipPlaying}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!cornerInterpreterOpen && embedUrl && activeTab !== 'avatar' && signingText.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCornerInterpreterOpen(true)
+                    setPipPlaying(true)
+                  }}
+                  className="absolute bottom-3 right-3 z-20 flex items-center gap-2 rounded-full bg-slate-900/90 px-3 py-2 text-xs font-medium text-teal-300 ring-1 ring-teal-500/40 shadow-lg hover:bg-slate-800 transition-colors"
+                >
+                  <Hand className="w-4 h-4" />
+                  Show interpreter
+                </button>
+              )}
+            </>
           ) : (
             <div className="flex items-center justify-center h-full text-center text-white">
               <div>
@@ -285,7 +392,12 @@ export default function ContentViewerPage() {
       </div>
 
       {/* Accessibility Features Tabs */}
-      <Tabs defaultValue="transcript" className="w-full">
+      <Tabs defaultValue="transcript" className="w-full" onValueChange={(v) => {
+        setActiveTab(v)
+        // Auto-start avatar when Sign Language tab is opened
+        if (v === 'avatar') setAvatarPlaying(true)
+        else setAvatarPlaying(false)
+      }}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="transcript">
             <BookOpen className="w-4 h-4 mr-2" />
@@ -313,8 +425,15 @@ export default function ContentViewerPage() {
               <p className="text-muted-foreground">Fetching transcript from YouTube...</p>
               <p className="text-xs text-muted-foreground mt-2">This may take a few seconds</p>
             </Card>
-          ) : displayTranscript && transcriptStatus !== 'unavailable' ? (
+          ) : displayTranscript.trim() ? (
             <div className="space-y-3">
+              {(transcriptStatus === 'unavailable' || transcriptFetchFailedNotice) && (
+                <Alert className="border-amber-500/40 bg-amber-500/10">
+                  <AlertDescription className="text-sm">
+                    Automatic captions were not available for this video. You can paste the transcript below and save it to unlock the Language Leveler, Audio, and Sign Language features.
+                  </AlertDescription>
+                </Alert>
+              )}
               {/* Transcript Header & Controls */}
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -431,6 +550,36 @@ export default function ContentViewerPage() {
                   </p>
                 </Card>
               )}
+              {(transcriptStatus === 'unavailable' || transcriptStatus === 'failed') && (
+                <Card className="p-4 space-y-3 border-dashed">
+                  <p className="text-sm font-medium">Paste transcript manually</p>
+                  <p className="text-xs text-muted-foreground">
+                    If you have captions from YouTube (&quot;Show transcript&quot;) or another source, paste them here and save.
+                  </p>
+                  <textarea
+                    value={manualTranscriptDraft}
+                    onChange={(e) => setManualTranscriptDraft(e.target.value)}
+                    placeholder="Paste the full transcript text…"
+                    rows={6}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <Button
+                    type="button"
+                    onClick={saveManualTranscript}
+                    disabled={isSavingManualTranscript || !manualTranscriptDraft.trim()}
+                    size="sm"
+                  >
+                    {isSavingManualTranscript ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      'Save transcript'
+                    )}
+                  </Button>
+                </Card>
+              )}
             </div>
           ) : (
             <Card className="p-8 text-center space-y-4">
@@ -456,51 +605,82 @@ export default function ContentViewerPage() {
                   Retry Fetching Transcript
                 </Button>
               )}
+              <div className="text-left pt-4 border-t border-border space-y-3">
+                <p className="text-sm font-medium">Paste transcript manually</p>
+                <textarea
+                  value={manualTranscriptDraft}
+                  onChange={(e) => setManualTranscriptDraft(e.target.value)}
+                  placeholder="Paste the full transcript text…"
+                  rows={6}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+                <Button
+                  type="button"
+                  onClick={saveManualTranscript}
+                  disabled={isSavingManualTranscript || !manualTranscriptDraft.trim()}
+                  size="sm"
+                >
+                  {isSavingManualTranscript ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    'Save transcript'
+                  )}
+                </Button>
+              </div>
             </Card>
           )}
         </TabsContent>
 
         {/* Language Leveler */}
         <TabsContent value="simplified" className="space-y-4">
-          {displayTranscript ? (
+          {transcriptForFeatures.trim() ? (
             <LanguageLeveler 
-              originalText={displayTranscript} 
+              originalText={transcriptForFeatures} 
               onSimplify={handleSimplify}
             />
           ) : (
             <Card className="p-8 text-center">
               <Eye className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-              <p className="text-muted-foreground">Transcript needed for text simplification</p>
-              <p className="text-xs text-muted-foreground mt-2">Fetch the transcript first from the Transcript tab</p>
+              <p className="text-muted-foreground">
+                {transcriptFetchFailedNotice
+                  ? 'Add a transcript from the Transcript tab (paste and save) to use the Leveler.'
+                  : 'Transcript needed for text simplification'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">Fetch or paste a transcript on the Transcript tab first</p>
             </Card>
           )}
         </TabsContent>
 
         {/* Audio Narratives */}
         <TabsContent value="audio" className="space-y-4">
-          {displayTranscript ? (
+          {transcriptForFeatures.trim() ? (
             <AudioNarrative
               title={content.title}
               description={content.description || 'Listen to an audio summary of the content'}
-              keyPoints={extractKeyPoints(displayTranscript, 5)}
+              keyPoints={extractKeyPoints(transcriptForFeatures, 5)}
             />
           ) : (
             <Card className="p-8 text-center">
               <Volume2 className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-              <p className="text-muted-foreground">Transcript needed for audio narrative</p>
-              <p className="text-xs text-muted-foreground mt-2">Fetch the transcript first from the Transcript tab</p>
+              <p className="text-muted-foreground">
+                {transcriptFetchFailedNotice
+                  ? 'Add a transcript from the Transcript tab (paste and save) for audio.'
+                  : 'Transcript needed for audio narrative'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">Fetch or paste a transcript on the Transcript tab first</p>
             </Card>
           )}
         </TabsContent>
 
-        {/* Sign Language Avatar — 2D + 3D Modes */}
+        {/* Sign Language Avatar — full controls (PiP above hides while this tab is open) */}
         <TabsContent value="avatar" className="space-y-4">
           <SignLanguage3D
-            text={simplifiedText || displayTranscript || content.title}
-            isPlaying={false}
-            onPlayPause={(playing) => {
-              console.log('[Synapto] 3D Avatar playing:', playing)
-            }}
+            text={signingText}
+            isPlaying={avatarPlaying}
+            onPlayPause={(playing) => setAvatarPlaying(playing)}
           />
         </TabsContent>
       </Tabs>

@@ -59,7 +59,17 @@ export default function SignUpPage() {
       if (error) throw error
       router.push('/auth/sign-up-success')
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'An error occurred')
+      const message = error instanceof Error ? error.message : 'An error occurred'
+      const isNetworkFetchError =
+        error instanceof TypeError && /failed to fetch/i.test(message)
+
+      if (isNetworkFetchError) {
+        setError(
+          'Cannot reach Supabase. Check NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY, confirm internet/DNS access, then restart the dev server.'
+        )
+      } else {
+        setError(message)
+      }
     } finally {
       setIsLoading(false)
     }

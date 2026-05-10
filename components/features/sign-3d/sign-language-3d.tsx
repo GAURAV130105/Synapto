@@ -4,576 +4,501 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Play, Pause, RotateCcw, ChevronLeft, ChevronRight,
-  Hand, Sparkles, Camera, Globe, User, Smile,
-  Zap, Volume2, Eye,
-} from 'lucide-react'
-import { Hand3DModel, type SkinTone } from './hand-3d-model'
+import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Zap } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { AvatarModel, type AvatarSkinTone } from './avatar-model'
 import {
   textToSignGloss, getLetterPoses, REST_POSE,
-  type HandPose, type SignGlossItem, type SignLanguageMode,
+  type HandPose, type SignGlossItem,
 } from './sign-poses'
-import {
-  analyzeEmotion, getExpression, NEUTRAL_EXPRESSION,
-  type FacialExpression, type EmotionType,
-} from './emotion-engine'
-import {
-  generateLipSync, getVisemeAtTime, VISEMES,
-  type Viseme, type LipSyncFrame,
-} from './lip-sync-engine'
+import { analyzeEmotion, getExpression, NEUTRAL_EXPRESSION, type FacialExpression } from './emotion-engine'
+import { VISEMES } from './lip-sync-engine'
 
-/**
- * 3D Sign Language Digital Interpreter
- * Warm, humanized UI — teal/emerald/amber palette
- */
-
-type ViewMode = 'avatar' | 'hand'
-type SignMode = 'signs' | 'spell'
-
-const SKIN_TONES: { id: SkinTone; label: string; color: string }[] = [
-  { id: 'light', label: 'Light', color: '#F5D0B0' },
+// ─── Constants ───────────────────────────────────────────────────────────────
+const SKIN_TONES: { id: AvatarSkinTone; label: string; color: string }[] = [
+  { id: 'light',  label: 'Light',  color: '#F5D0B0' },
   { id: 'medium', label: 'Medium', color: '#C68642' },
-  { id: 'dark', label: 'Dark', color: '#6B4423' },
-  { id: 'robot', label: 'Robot', color: '#8BA4B8' },
+  { id: 'dark',   label: 'Dark',   color: '#6B4423' },
+  { id: 'robot',  label: 'Robot',  color: '#8BA4B8' },
 ]
 
-const LANGUAGE_MODES: { id: SignLanguageMode; label: string; flag: string }[] = [
-  { id: 'asl', label: 'ASL', flag: '🇺🇸' },
-  { id: 'isl', label: 'ISL', flag: '🇮🇳' },
-]
-
-const EMOTION_ICONS: Record<EmotionType, string> = {
-  neutral: '😐', happy: '😊', sad: '😢', surprised: '😲',
-  angry: '😠', thinking: '🤔', excited: '🤩', confused: '😕',
-}
-
-// ─── Framer Motion Variants ───
-const fadeSlide = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -12 },
-  transition: { duration: 0.25, ease: 'easeOut' },
-}
-
-const scaleIn = {
-  initial: { opacity: 0, scale: 0.9 },
-  animate: { opacity: 1, scale: 1 },
-  exit: { opacity: 0, scale: 0.9 },
-  transition: { duration: 0.2, ease: 'easeOut' },
-}
-
-const staggerContainer = {
-  animate: { transition: { staggerChildren: 0.05 } },
-}
-
-const staggerItem = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-}
-
-// ─── Full Avatar 3D Scene ───
-function AvatarScene({
-  currentPose, skinTone, expression, viseme, headTilt,
-}: {
-  currentPose: HandPose; skinTone: AvatarSkinTone; expression: FacialExpression; viseme: Viseme; headTilt: { x: number; y: number; z: number }
-}) {
-  return (
-    <>
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[3, 5, 2]} intensity={1.1} castShadow color="#FFF5E0" />
-      <directionalLight position={[-2, 3, -1]} intensity={0.4} color="#E0F0FF" />
-      <pointLight position={[0, 2, 3]} intensity={0.5} color="#FFFFF0" />
-      <pointLight position={[-1, -1, 2]} intensity={0.25} color="#FFE8D0" />
-      <Environment preset="apartment" />
-      <group position={[0, 0.6, 0]}>
-        <AvatarModel handPose={currentPose} skinTone={skinTone} expression={expression} viseme={viseme} headTilt={headTilt} bodySwayEnabled />
-      </group>
-      <ContactShadows position={[0, -1.0, 0]} opacity={0.3} scale={5} blur={2.5} far={4} />
-      <OrbitControls enablePan={false} minDistance={1.5} maxDistance={5} minPolarAngle={Math.PI / 6} maxPolarAngle={Math.PI / 1.6} target={[0, 0.3, 0]} />
-    </>
-  )
-}
-
-// ─── Hand Close-up Scene ───
-function HandScene({ currentPose, skinTone, mirror }: { currentPose: HandPose; skinTone: SkinTone; mirror: boolean }) {
-  return (
-    <>
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[3, 5, 2]} intensity={1.1} castShadow color="#FFF5E0" />
-      <directionalLight position={[-2, 3, -1]} intensity={0.4} color="#E0F0FF" />
-      <pointLight position={[0, 2, 3]} intensity={0.5} />
-      <pointLight position={[-1, -1, 2]} intensity={0.25} color="#FFE8D0" />
-      <Environment preset="apartment" />
-      <group position={[0, 0.3, 0]} rotation={[0.2, mirror ? -0.3 : 0.3, 0]}>
-        <Hand3DModel targetPose={currentPose} skinTone={skinTone} transitionSpeed={6} mirror={mirror} scale={2.5} />
-      </group>
-      <ContactShadows position={[0, -1.2, 0]} opacity={0.35} scale={4} blur={2} far={3} />
-      <OrbitControls enablePan={false} minDistance={2} maxDistance={6} minPolarAngle={Math.PI / 6} maxPolarAngle={Math.PI / 1.8} target={[0, 0.5, 0]} />
-    </>
-  )
-}
-
+// ─── Loading fallback ────────────────────────────────────────────────────────
 function LoadingFallback() {
   return (
     <Html center>
-      <div className="flex flex-col items-center gap-2 text-slate-400">
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: '#94a3b8' }}>
         <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-          <Zap className="w-8 h-8" />
+          <Zap style={{ width: 32, height: 32, color: '#14b8a6' }} />
         </motion.div>
-        <span className="text-xs font-medium">Loading 3D Avatar...</span>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>Loading Avatar…</span>
       </div>
     </Html>
   )
 }
 
-// ─── Main Component ───
+// ─── 3D Scene ────────────────────────────────────────────────────────────────
+function AvatarScene({
+  currentPose, skinTone, expression, headTilt,
+}: {
+  currentPose: HandPose
+  skinTone: AvatarSkinTone
+  expression: FacialExpression
+  headTilt: { x: number; y: number; z: number }
+}) {
+  return (
+    <>
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[3, 6, 3]} intensity={1.4} castShadow color="#FFF8F0" />
+      <directionalLight position={[-3, 4, -2]} intensity={0.5} color="#D0E8FF" />
+      <pointLight position={[0, 3, 4]} intensity={0.6} color="#FFFDF0" />
+      <Environment preset="apartment" />
+      <group position={[0, -1.05, 0]}>
+        <AvatarModel
+          handPose={currentPose}
+          skinTone={skinTone}
+          expression={expression}
+          viseme={VISEMES.rest}
+          headTilt={headTilt}
+          bodySwayEnabled
+        />
+      </group>
+      <ContactShadows position={[0, -1.08, 0]} opacity={0.35} scale={5} blur={2.5} far={4} />
+      <OrbitControls
+        enablePan={false}
+        minDistance={1.4}
+        maxDistance={4.5}
+        minPolarAngle={Math.PI / 8}
+        maxPolarAngle={Math.PI / 1.6}
+        target={[0, 0.15, 0]}
+      />
+    </>
+  )
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 interface SignLanguage3DProps {
   text: string
   isPlaying?: boolean
   onPlayPause?: (playing: boolean) => void
+  /** Compact layout for picture-in-picture over a video */
+  variant?: 'default' | 'pip'
 }
 
-export function SignLanguage3D({ text, isPlaying: externalPlaying = false, onPlayPause }: SignLanguage3DProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('avatar')
-  const [signMode, setSignMode] = useState<SignMode>('signs')
-  const [languageMode, setLanguageMode] = useState<SignLanguageMode>('asl')
-  const [playing, setPlaying] = useState(externalPlaying)
-  const [currentItemIndex, setCurrentItemIndex] = useState(0)
-  const [currentKeyframe, setCurrentKeyframe] = useState(0)
-  const [currentLetterIndex, setCurrentLetterIndex] = useState(0)
-  const [currentPose, setCurrentPose] = useState<HandPose>(REST_POSE)
-  const [skinTone, setSkinTone] = useState<SkinTone>('medium')
-  const [mirror, setMirror] = useState(false)
-  const [speed, setSpeed] = useState<number>(1)
-  const [expression, setExpression] = useState<FacialExpression>(NEUTRAL_EXPRESSION)
-  const [currentViseme, setCurrentViseme] = useState<Viseme>(VISEMES.rest)
-  const [headTilt, setHeadTilt] = useState({ x: 0, y: 0, z: 0 })
-  const [detectedEmotion, setDetectedEmotion] = useState<EmotionType>('neutral')
-  const [lipSyncFrames, setLipSyncFrames] = useState<LipSyncFrame[]>([])
-  const [lipSyncStartTime, setLipSyncStartTime] = useState<number>(0)
+export function SignLanguage3D({
+  text,
+  isPlaying: externalPlaying = false,
+  onPlayPause,
+  variant = 'default',
+}: SignLanguage3DProps) {
+  const isPip = variant === 'pip'
+  // ── Derived data (no state — computed on every render, stable) ─────────────
+  const glossItems  = textToSignGloss(text, 'asl')
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lipSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // ── UI state ────────────────────────────────────────────────────────────────
+  const [playing, setPlaying]           = useState(false)
+  const [itemIndex, setItemIndex]       = useState(0)
+  const [keyframe, setKeyframe]         = useState(0)
+  const [letterIndex, setLetterIndex]   = useState(0)
+  const [currentPose, setCurrentPose]   = useState<HandPose>(REST_POSE)
+  const [skinTone, setSkinTone]         = useState<AvatarSkinTone>('medium')
+  const [speed, setSpeed]               = useState(1)
+  const [expression, setExpression]     = useState<FacialExpression>(NEUTRAL_EXPRESSION)
+  const [headTilt, setHeadTilt]         = useState({ x: 0, y: 0, z: 0 })
 
-  const glossItems = textToSignGloss(text, languageMode)
-  const letterPoses = getLetterPoses(languageMode)
-  const spellChars = text.replace(/[^a-zA-Z\s]/g, '').toLowerCase().split('').filter(Boolean)
-  const currentItem = signMode === 'signs' ? glossItems[currentItemIndex] : null
-  const currentChar = signMode === 'spell' ? spellChars[currentLetterIndex] : ''
+  // ── Refs (mutations that must not re-render) ────────────────────────────────
+  const timerRef        = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const playingRef      = useRef(false)   // mirror of `playing` for use inside closures
+  const autoStartedRef  = useRef(false)
+  const lastAutoTextRef = useRef(text)
 
+  // ── Sync emotion from text — stable dep ────────────────────────────────────
   useEffect(() => {
     const { emotion, intensity } = analyzeEmotion(text)
-    setDetectedEmotion(emotion)
     setExpression(getExpression(emotion, intensity))
   }, [text])
 
+  // ── Update pose when index/keyframe changes ────────────────────────────────
   useEffect(() => {
-    if (currentItem?.type === 'word' && currentItem.animation) {
-      setLipSyncFrames(generateLipSync(currentItem.value, 120 * speed))
-    } else if (signMode === 'spell' && currentChar) {
-      setLipSyncFrames(generateLipSync(currentChar, 60))
+    const item = glossItems[itemIndex]
+    if (!item) return
+
+    if (item.type === 'word' && item.animation) {
+      const pose = item.animation.poses[keyframe] ?? item.animation.poses[0]
+      setCurrentPose(pose)
+      setHeadTilt({
+        x: item.animation.type === 'motion' ? Math.sin(keyframe) * 0.04 : 0,
+        y: 0, z: 0,
+      })
+    } else if (item.type === 'fingerspell' && item.letterPoses) {
+      const idx = Math.min(letterIndex, item.letterPoses.length - 1)
+      setCurrentPose(item.letterPoses[idx] ?? REST_POSE)
     }
-  }, [currentItem, currentChar, signMode, speed])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemIndex, keyframe, letterIndex])
 
-  useEffect(() => {
-    if (signMode === 'signs' && currentItem) {
-      if (currentItem.type === 'word' && currentItem.animation) {
-        const pose = currentItem.animation.poses[currentKeyframe] || currentItem.animation.poses[0]
-        setCurrentPose(pose)
-        setHeadTilt({ x: currentItem.animation.type === 'motion' ? Math.sin(currentKeyframe) * 0.05 : 0, y: 0, z: 0 })
-      } else if (currentItem.type === 'fingerspell' && currentItem.letterPoses) {
-        const idx = Math.min(currentLetterIndex, currentItem.letterPoses.length - 1)
-        setCurrentPose(currentItem.letterPoses[idx] || REST_POSE)
-      }
-    } else if (signMode === 'spell' && currentChar) {
-      setCurrentPose(letterPoses[currentChar] || REST_POSE)
-    }
-  }, [signMode, currentItemIndex, currentKeyframe, currentLetterIndex, currentChar, letterPoses])
-
-  const startLipSync = useCallback(() => {
-    if (lipSyncIntervalRef.current) clearInterval(lipSyncIntervalRef.current)
-    setLipSyncStartTime(Date.now())
-    lipSyncIntervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - lipSyncStartTime
-      setCurrentViseme(getVisemeAtTime(lipSyncFrames, elapsed))
-    }, 50)
-  }, [lipSyncFrames, lipSyncStartTime])
-
-  const stopLipSync = useCallback(() => {
-    if (lipSyncIntervalRef.current) { clearInterval(lipSyncIntervalRef.current); lipSyncIntervalRef.current = null }
-    setCurrentViseme(VISEMES.rest)
+  // ── Playback engine ────────────────────────────────────────────────────────
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
   }, [])
 
-  const clearTimer = useCallback(() => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null } }, [])
+  const stop = useCallback(() => {
+    setPlaying(false)
+    playingRef.current = false
+    clearTimer()
+    onPlayPause?.(false)
+  }, [clearTimer, onPlayPause])
 
-  const stopPlaying = useCallback(() => { setPlaying(false); clearTimer(); stopLipSync(); onPlayPause?.(false) }, [clearTimer, stopLipSync, onPlayPause])
+  // Advance uses refs/closures to avoid stale deps causing re-renders
+  const advance = useCallback(() => {
+    if (!playingRef.current) return
 
-  const advancePlayback = useCallback(() => {
-    if (signMode === 'signs') {
-      const item = glossItems[currentItemIndex]
-      if (!item) { stopPlaying(); return }
-      if (item.type === 'word' && item.animation) {
+    setItemIndex(prevItem => {
+      setKeyframe(prevKf => {
+        setLetterIndex(prevLetter => {
+          const item = glossItems[prevItem]
+          if (!item) { stop(); return prevLetter }
+
+          if (item.type === 'word' && item.animation) {
+            const maxKf = item.animation.poses.length - 1
+            if (prevKf < maxKf) {
+              // next keyframe in same sign
+              const delay = (item.animation.durations?.[prevKf + 1] ?? 500) / speed
+              timerRef.current = setTimeout(advance, delay)
+              return prevLetter // letterIndex unchanged
+            } else if (item.animation.loop) {
+              timerRef.current = setTimeout(advance, 400 / speed)
+              // reset keyframe via effect
+              setTimeout(() => setKeyframe(0), 0)
+              return prevLetter
+            } else if (prevItem < glossItems.length - 1) {
+              setTimeout(() => { setKeyframe(0); setLetterIndex(0) }, 0)
+              timerRef.current = setTimeout(advance, 600 / speed)
+              return 0
+            } else {
+              stop(); return prevLetter
+            }
+          } else if (item.type === 'fingerspell' && item.letterPoses) {
+            if (prevLetter < item.letterPoses.length - 1) {
+              timerRef.current = setTimeout(advance, 700 / speed)
+              return prevLetter + 1
+            } else if (prevItem < glossItems.length - 1) {
+              setTimeout(() => { setKeyframe(0); setLetterIndex(0) }, 0)
+              timerRef.current = setTimeout(advance, 800 / speed)
+              return 0
+            } else {
+              stop(); return prevLetter
+            }
+          }
+          stop(); return prevLetter
+        })
+
+        // Advance keyframe for word signs
+        const item = glossItems[prevItem]
+        if (item?.type === 'word' && item.animation) {
+          const maxKf = item.animation.poses.length - 1
+          if (prevKf < maxKf) return prevKf + 1
+          if (item.animation.loop) return 0
+          return 0
+        }
+        return prevKf
+      })
+
+      // Advance item index for non-looping finished signs
+      const item = glossItems[prevItem]
+      if (item?.type === 'word' && item.animation) {
         const maxKf = item.animation.poses.length - 1
-        if (currentKeyframe < maxKf) {
-          setCurrentKeyframe(prev => prev + 1)
-          timerRef.current = setTimeout(advancePlayback, (item.animation.durations?.[currentKeyframe + 1] || 500) / speed)
-        } else if (item.animation.loop) {
-          setCurrentKeyframe(0)
-          timerRef.current = setTimeout(advancePlayback, 400 / speed)
-        } else if (currentItemIndex < glossItems.length - 1) {
-          setCurrentItemIndex(prev => prev + 1); setCurrentKeyframe(0); setCurrentLetterIndex(0)
-          setLipSyncStartTime(Date.now())
-          timerRef.current = setTimeout(advancePlayback, 600 / speed)
-        } else { stopPlaying() }
-      } else if (item.type === 'fingerspell' && item.letterPoses) {
-        if (currentLetterIndex < item.letterPoses.length - 1) {
-          setCurrentLetterIndex(prev => prev + 1)
-          timerRef.current = setTimeout(advancePlayback, 700 / speed)
-        } else if (currentItemIndex < glossItems.length - 1) {
-          setCurrentItemIndex(prev => prev + 1); setCurrentKeyframe(0); setCurrentLetterIndex(0)
-          timerRef.current = setTimeout(advancePlayback, 800 / speed)
-        } else { stopPlaying() }
+        if (keyframe >= maxKf && !item.animation.loop && prevItem < glossItems.length - 1) {
+          return prevItem + 1
+        }
+      } else if (item?.type === 'fingerspell' && item.letterPoses) {
+        if (letterIndex >= item.letterPoses.length - 1 && prevItem < glossItems.length - 1) {
+          return prevItem + 1
+        }
+      }
+      return prevItem
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glossItems, speed, stop])
+
+  // ── Simpler advance (replaces the nested setState nightmare above) ──────────
+  // Use a separate ref-based approach
+  const stateRef = useRef({ itemIndex: 0, keyframe: 0, letterIndex: 0, speed: 1 })
+  stateRef.current.speed = speed
+
+  const advanceStep = useCallback(() => {
+    if (!playingRef.current) return
+    const { itemIndex: ii, keyframe: kf, letterIndex: li } = stateRef.current
+    const item = glossItems[ii]
+    if (!item) { stop(); return }
+
+    if (item.type === 'word' && item.animation) {
+      const maxKf = item.animation.poses.length - 1
+      if (kf < maxKf) {
+        const next = kf + 1
+        stateRef.current.keyframe = next
+        setKeyframe(next)
+        timerRef.current = setTimeout(advanceStep, (item.animation.durations?.[next] ?? 500) / stateRef.current.speed)
+      } else if (item.animation.loop) {
+        stateRef.current.keyframe = 0
+        setKeyframe(0)
+        timerRef.current = setTimeout(advanceStep, 400 / stateRef.current.speed)
+      } else if (ii < glossItems.length - 1) {
+        const nextItem = ii + 1
+        stateRef.current.itemIndex = nextItem
+        stateRef.current.keyframe = 0
+        stateRef.current.letterIndex = 0
+        setItemIndex(nextItem)
+        setKeyframe(0)
+        setLetterIndex(0)
+        timerRef.current = setTimeout(advanceStep, 600 / stateRef.current.speed)
+      } else {
+        stop()
+      }
+    } else if (item.type === 'fingerspell' && item.letterPoses) {
+      if (li < item.letterPoses.length - 1) {
+        const next = li + 1
+        stateRef.current.letterIndex = next
+        setLetterIndex(next)
+        timerRef.current = setTimeout(advanceStep, 700 / stateRef.current.speed)
+      } else if (ii < glossItems.length - 1) {
+        const nextItem = ii + 1
+        stateRef.current.itemIndex = nextItem
+        stateRef.current.keyframe = 0
+        stateRef.current.letterIndex = 0
+        setItemIndex(nextItem)
+        setKeyframe(0)
+        setLetterIndex(0)
+        timerRef.current = setTimeout(advanceStep, 800 / stateRef.current.speed)
+      } else {
+        stop()
       }
     } else {
-      if (currentLetterIndex < spellChars.length - 1) {
-        setCurrentLetterIndex(prev => prev + 1)
-        timerRef.current = setTimeout(advancePlayback, 700 / speed)
-      } else { stopPlaying() }
+      stop()
     }
-  }, [signMode, currentItemIndex, currentKeyframe, currentLetterIndex, glossItems, spellChars, speed, stopPlaying])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glossItems, stop])
 
   const startPlaying = useCallback(() => {
-    setPlaying(true); onPlayPause?.(true); startLipSync()
-    const item = glossItems[currentItemIndex]
-    timerRef.current = setTimeout(advancePlayback, ((item?.type === 'word' && item.animation?.durations?.[0]) || 600) / speed)
-  }, [advancePlayback, currentItemIndex, glossItems, onPlayPause, speed, startLipSync])
-
-  useEffect(() => () => { clearTimer(); stopLipSync() }, [clearTimer, stopLipSync])
+    setPlaying(true)
+    playingRef.current = true
+    onPlayPause?.(true)
+    const item = glossItems[stateRef.current.itemIndex]
+    const delay = (item?.type === 'word' && item.animation?.durations?.[0]) ? item.animation.durations[0] / stateRef.current.speed : 600
+    timerRef.current = setTimeout(advanceStep, delay)
+  }, [advanceStep, glossItems, onPlayPause])
 
   const reset = useCallback(() => {
-    stopPlaying(); setCurrentItemIndex(0); setCurrentKeyframe(0); setCurrentLetterIndex(0)
-    setCurrentPose(REST_POSE); setCurrentViseme(VISEMES.rest); setHeadTilt({ x: 0, y: 0, z: 0 })
-  }, [stopPlaying])
+    stop()
+    stateRef.current = { itemIndex: 0, keyframe: 0, letterIndex: 0, speed: stateRef.current.speed }
+    setItemIndex(0); setKeyframe(0); setLetterIndex(0)
+    setCurrentPose(REST_POSE); setHeadTilt({ x: 0, y: 0, z: 0 })
+  }, [stop])
 
-  const stepForward = useCallback(() => {
-    if (signMode === 'signs') { if (currentItemIndex < glossItems.length - 1) { setCurrentItemIndex(prev => prev + 1); setCurrentKeyframe(0); setCurrentLetterIndex(0) } }
-    else { if (currentLetterIndex < spellChars.length - 1) setCurrentLetterIndex(prev => prev + 1) }
-  }, [signMode, currentItemIndex, currentLetterIndex, glossItems.length, spellChars.length])
+  // Keep stateRef in sync
+  useEffect(() => { stateRef.current.itemIndex = itemIndex }, [itemIndex])
+  useEffect(() => { stateRef.current.keyframe = keyframe }, [keyframe])
+  useEffect(() => { stateRef.current.letterIndex = letterIndex }, [letterIndex])
+  useEffect(() => { stateRef.current.speed = speed }, [speed])
 
-  const stepBackward = useCallback(() => {
-    if (signMode === 'signs') { if (currentItemIndex > 0) { setCurrentItemIndex(prev => prev - 1); setCurrentKeyframe(0); setCurrentLetterIndex(0) } }
-    else { if (currentLetterIndex > 0) setCurrentLetterIndex(prev => prev - 1) }
-  }, [signMode, currentItemIndex, currentLetterIndex])
+  // When signing source text changes (e.g. transcript finished loading), allow auto-start again
+  useEffect(() => {
+    if (text !== lastAutoTextRef.current) {
+      lastAutoTextRef.current = text
+      autoStartedRef.current = false
+      stateRef.current = { itemIndex: 0, keyframe: 0, letterIndex: 0, speed: stateRef.current.speed }
+      setItemIndex(0)
+      setKeyframe(0)
+      setLetterIndex(0)
+      setCurrentPose(REST_POSE)
+      if (externalPlaying) {
+        stop()
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text])
 
-  const totalItems = signMode === 'signs' ? glossItems.length : spellChars.length
-  const currentIdx = signMode === 'signs' ? currentItemIndex : currentLetterIndex
-  const progress = totalItems > 1 ? Math.round((currentIdx / (totalItems - 1)) * 100) : 0
-  const wordCount = signMode === 'signs' ? glossItems.filter(g => g.type === 'word').length : 0
+  // Auto-start wiring (must call startPlaying — timers live there; do not only set `playing`)
+  useEffect(() => {
+    if (!externalPlaying) {
+      if (autoStartedRef.current) {
+        autoStartedRef.current = false
+        stop()
+      }
+      return
+    }
+    if (glossItems.length === 0 || autoStartedRef.current) return
+    autoStartedRef.current = true
+    const t = setTimeout(() => startPlaying(), 600)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalPlaying, glossItems.length, startPlaying, stop])
+
+  useEffect(() => () => clearTimer(), [clearTimer])
+
+  const stepForward = () => {
+    if (itemIndex < glossItems.length - 1) {
+      const next = itemIndex + 1
+      stateRef.current.itemIndex = next
+      stateRef.current.keyframe = 0
+      stateRef.current.letterIndex = 0
+      setItemIndex(next); setKeyframe(0); setLetterIndex(0)
+    }
+  }
+  const stepBackward = () => {
+    if (itemIndex > 0) {
+      const prev = itemIndex - 1
+      stateRef.current.itemIndex = prev
+      stateRef.current.keyframe = 0
+      stateRef.current.letterIndex = 0
+      setItemIndex(prev); setKeyframe(0); setLetterIndex(0)
+    }
+  }
+
+  const currentItem = glossItems[itemIndex] ?? null
+  const progress = glossItems.length > 1 ? Math.round((itemIndex / (glossItems.length - 1)) * 100) : 0
 
   return (
-    <motion.div className="w-full space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
+    <motion.div
+      className={cn('w-full', isPip ? 'space-y-1.5' : 'space-y-3')}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+    >
 
-      {/* ─── Top Controls ─── */}
-      <motion.div className="flex flex-wrap items-center gap-2 justify-center" variants={staggerContainer} initial="initial" animate="animate">
-        {/* View Mode */}
-        <motion.div variants={staggerItem} className="flex items-center gap-1 bg-slate-800/70 rounded-xl p-1 border border-slate-700/50">
-          <button onClick={() => setViewMode('avatar')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              viewMode === 'avatar' ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-500/25' : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
-            }`}>
-            <User className="w-3.5 h-3.5" /> Full Avatar
-          </button>
-          <button onClick={() => setViewMode('hand')}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              viewMode === 'hand' ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-500/25' : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
-            }`}>
-            <Hand className="w-3.5 h-3.5" /> Hand Close-up
-          </button>
-        </motion.div>
+      {/* ── 3D Canvas ── */}
+      <div
+        className={cn(
+          'relative bg-gradient-to-b from-[#0a1628] via-[#0d1f35] to-[#0a1628] border border-slate-700/50 overflow-hidden shadow-2xl',
+          isPip ? 'rounded-xl border-teal-500/40 shadow-black/60' : 'rounded-2xl'
+        )}
+      >
 
-        {/* Language Toggle */}
-        <motion.div variants={staggerItem} className="flex items-center gap-1 bg-slate-800/70 rounded-xl p-1 border border-slate-700/50">
-          {LANGUAGE_MODES.map(lang => (
-            <button key={lang.id} onClick={() => { setLanguageMode(lang.id); reset() }}
-              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                languageMode === lang.id ? 'bg-gradient-to-r from-cyan-600 to-teal-600 text-white shadow-lg shadow-cyan-500/25' : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
-              }`}>
-              <span className="text-sm">{lang.flag}</span> {lang.label}
-            </button>
-          ))}
-        </motion.div>
+        <div className={cn('relative', isPip ? 'h-[220px]' : 'h-[480px]')}>
+          <Canvas camera={{ position: [0, 0.25, 2.5], fov: 50 }} shadows dpr={[1, 2]} gl={{ antialias: true, alpha: true }}>
+            <Suspense fallback={<LoadingFallback />}>
+              <AvatarScene currentPose={currentPose} skinTone={skinTone} expression={expression} headTilt={headTilt} />
+            </Suspense>
+          </Canvas>
 
-        {/* Sign Mode */}
-        <motion.div variants={staggerItem} className="flex items-center gap-1 bg-slate-800/70 rounded-xl p-1 border border-slate-700/50">
-          <button onClick={() => { setSignMode('signs'); reset() }}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              signMode === 'signs' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25' : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
-            }`}>
-            <Sparkles className="w-3.5 h-3.5" /> Signs
-          </button>
-          <button onClick={() => { setSignMode('spell'); reset() }}
-            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              signMode === 'spell' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25' : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
-            }`}>
-            🔤 Spell
-          </button>
-        </motion.div>
-      </motion.div>
-
-      {/* ─── 3D Canvas + Info Panel ─── */}
-      <motion.div className="relative bg-gradient-to-b from-slate-900 via-[#0f1a24] to-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden shadow-2xl" layout transition={{ duration: 0.3 }}>
-        <div className="flex flex-col lg:flex-row">
-          {/* 3D Viewer */}
-          <div className="flex-1 min-h-[450px] relative">
-            <Canvas
-              camera={{ position: viewMode === 'avatar' ? [0, 0.5, 2.8] : [0, 1.5, 3.5], fov: viewMode === 'avatar' ? 45 : 40 }}
-              shadows dpr={[1, 2]} gl={{ antialias: true, alpha: true }}
-            >
-              <Suspense fallback={<LoadingFallback />}>
-                {viewMode === 'avatar' ? (
-                  <AvatarScene currentPose={currentPose} skinTone={skinTone as AvatarSkinTone} expression={expression} viseme={currentViseme} headTilt={headTilt} />
-                ) : (
-                  <HandScene currentPose={currentPose} skinTone={skinTone} mirror={mirror} />
+          {/* Current sign badge */}
+          <AnimatePresence mode="wait">
+            {currentItem && (
+              <motion.div
+                key={currentItem.value}
+                className={cn(
+                  'absolute left-1/2 -translate-x-1/2 bg-slate-900/85 backdrop-blur-md border border-teal-500/30 text-center pointer-events-none',
+                  isPip ? 'bottom-2 px-3 py-1 rounded-lg max-w-[95%]' : 'bottom-4 px-5 py-2 rounded-xl'
                 )}
-              </Suspense>
-            </Canvas>
-
-            {/* Language badge */}
-            <motion.div className="absolute top-3 left-3 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-sm text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700/50 font-bold"
-              initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.3 }}>
-              <Globe className="w-3.5 h-3.5 text-teal-400" />
-              {languageMode === 'asl' ? '🇺🇸 ASL' : '🇮🇳 ISL'}
-            </motion.div>
-
-            {/* Emotion badge (avatar mode) */}
-            {viewMode === 'avatar' && (
-              <motion.div className="absolute top-3 right-3 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-sm text-xs px-3 py-1.5 rounded-lg border border-slate-700/50 font-bold"
-                initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.4 }} key={detectedEmotion}>
-                <Smile className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-amber-300">{EMOTION_ICONS[detectedEmotion]} {detectedEmotion}</span>
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+              >
+                <p className={cn('uppercase tracking-widest text-teal-400/70 font-bold', isPip ? 'text-[8px]' : 'text-[10px]')}>
+                  {currentItem.type === 'word' ? (currentItem.animation?.category ?? 'Signing') : 'Spelling'}
+                </p>
+                <p className={cn('font-black text-white tracking-wide', isPip ? 'text-sm mt-0' : 'text-xl mt-0.5')}>
+                  {currentItem.value}
+                </p>
+                {!isPip && currentItem.type === 'word' && currentItem.animation && (
+                  <p className="text-[10px] text-slate-400 mt-0.5">{currentItem.animation.description}</p>
+                )}
               </motion.div>
             )}
+          </AnimatePresence>
 
-            {/* Camera hint */}
-            <motion.div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-slate-900/70 backdrop-blur-sm text-slate-400 text-[10px] px-2.5 py-1.5 rounded-lg border border-slate-700/50"
-              initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.5 }}>
-              <Camera className="w-3 h-3" /> Drag to rotate • Scroll to zoom
-            </motion.div>
-
-            {/* Lip sync indicator */}
-            {viewMode === 'avatar' && playing && (
-              <motion.div className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-teal-900/60 backdrop-blur-sm text-teal-300 text-[10px] px-2.5 py-1.5 rounded-lg border border-teal-700/40"
-                initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ repeat: Infinity, duration: 0.6 }}>
-                  <Volume2 className="w-3 h-3" />
-                </motion.div>
-                Lip Sync Active
-              </motion.div>
-            )}
-          </div>
-
-          {/* ─── Info Panel ─── */}
-          <div className="lg:w-80 p-5 bg-[#0f1a24]/80 border-t lg:border-t-0 lg:border-l border-slate-700/50 space-y-4 overflow-y-auto max-h-[500px]">
-            <AnimatePresence mode="wait">
-              {signMode === 'signs' && currentItem ? (
-                <motion.div key={`sign-${currentItemIndex}`} {...fadeSlide} className="space-y-3">
-                  <div className="text-center">
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold">
-                      {currentItem.type === 'word' ? currentItem.animation?.category || 'Sign' : 'Fingerspell'}
-                    </span>
-                    <motion.p className="text-3xl font-black bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent mt-1"
-                      key={currentItem.value} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
-                      {currentItem.value}
-                    </motion.p>
-                  </div>
-
-                  {currentItem.type === 'word' && currentItem.animation && (
-                    <>
-                      <motion.div className="bg-teal-500/10 rounded-lg p-3 border border-teal-500/20" {...scaleIn}>
-                        <p className="text-xs font-bold text-teal-400 flex items-center gap-1.5">
-                          <Hand className="w-3.5 h-3.5" /> Description
-                        </p>
-                        <p className="text-xs text-teal-300/80 mt-1">{currentItem.animation.description}</p>
-                      </motion.div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span className="bg-slate-700/50 px-2 py-1 rounded">Keyframe {currentKeyframe + 1}/{currentItem.animation.poses.length}</span>
-                        <span className="bg-slate-700/50 px-2 py-1 rounded">{currentItem.animation.type === 'motion' ? '🎬 Animated' : '📸 Static'}</span>
-                      </div>
-                    </>
-                  )}
-
-                  {currentItem.type === 'fingerspell' && (
-                    <motion.div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600/50" {...scaleIn}>
-                      <p className="text-xs text-slate-400">No word sign — spelling: <strong className="text-slate-300">{currentItem.value}</strong></p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {currentItem.value.split('').map((c, i) => (
-                          <motion.span key={i}
-                            className={`w-7 h-8 flex items-center justify-center rounded text-xs font-mono font-bold transition-all ${
-                              i === currentLetterIndex ? 'bg-teal-500 text-white scale-110' : i < currentLetterIndex ? 'bg-teal-500/20 text-teal-400' : 'bg-slate-700 text-slate-500'
-                            }`}
-                            animate={i === currentLetterIndex ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.3 }}>
-                            {c}
-                          </motion.span>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </motion.div>
-              ) : signMode === 'spell' ? (
-                <motion.div key={`spell-${currentLetterIndex}`} {...fadeSlide} className="space-y-3">
-                  <div className="text-center">
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Current Letter</p>
-                    <motion.p className="text-5xl font-black bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent"
-                      key={currentChar} initial={{ scale: 0.5, opacity: 0, rotateY: -90 }} animate={{ scale: 1, opacity: 1, rotateY: 0 }}
-                      transition={{ type: 'spring', stiffness: 200 }}>
-                      {currentChar === ' ' ? '⎵' : currentChar.toUpperCase()}
-                    </motion.p>
-                  </div>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-
-            {/* Emotion display */}
-            {viewMode === 'avatar' && (
-              <motion.div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20" {...scaleIn}>
-                <p className="text-xs font-bold text-amber-400 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Emotional AI</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-2xl">{EMOTION_ICONS[detectedEmotion]}</span>
-                  <div>
-                    <p className="text-xs text-amber-300 font-bold capitalize">{detectedEmotion}</p>
-                    <p className="text-[10px] text-amber-400/60">Detected from text</p>
-                  </div>
-                </div>
-                <div className="mt-2 w-full bg-slate-700/50 rounded-full h-1.5">
-                  <motion.div className="bg-gradient-to-r from-amber-500 to-orange-500 h-full rounded-full"
-                    initial={{ width: 0 }} animate={{ width: `${expression.intensity * 100}%` }} transition={{ duration: 0.5 }} />
-                </div>
-              </motion.div>
-            )}
-
-            {/* Skin Tone */}
-            <div>
-              <p className="text-xs text-slate-500 mb-2">Skin Tone:</p>
-              <div className="flex gap-1.5">
-                {SKIN_TONES.map(tone => (
-                  <motion.button key={tone.id} onClick={() => setSkinTone(tone.id)}
-                    className={`flex-1 py-2 px-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
-                      skinTone === tone.id ? 'bg-teal-500/20 text-teal-400 ring-1 ring-teal-500/40' : 'bg-slate-700/50 text-slate-500 hover:bg-slate-700'
-                    }`}
-                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <span className="w-3 h-3 rounded-full border border-slate-600" style={{ background: tone.color }} />
-                    {tone.label}
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-
-            {/* Mirror toggle (hand mode) */}
-            {viewMode === 'hand' && (
-              <motion.div {...fadeSlide}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">Mirror:</span>
-                  <button onClick={() => setMirror(!mirror)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mirror ? 'bg-teal-500 text-white' : 'bg-slate-700/50 text-slate-500 hover:bg-slate-700'}`}>
-                    {mirror ? 'Left Hand' : 'Right Hand'}
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Speed */}
-            <div>
-              <p className="text-xs text-slate-500 mb-2">Speed:</p>
-              <div className="flex gap-1">
-                {[{ label: '0.5x', val: 0.5 }, { label: '1x', val: 1 }, { label: '1.5x', val: 1.5 }, { label: '2x', val: 2 }].map(s => (
-                  <motion.button key={s.label} onClick={() => setSpeed(s.val)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${speed === s.val ? 'bg-teal-500 text-white' : 'bg-slate-700/50 text-slate-500 hover:bg-slate-700'}`}
-                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    {s.label}
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {!isPip && (
+            <p className="absolute top-3 left-3 text-[10px] text-slate-500">
+              Drag to rotate • Scroll to zoom
+            </p>
+          )}
         </div>
 
         {/* Progress bar */}
-        <div className="w-full bg-slate-800 h-1.5">
-          <motion.div className="bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 h-full rounded-r"
-            animate={{ width: `${progress}%` }} transition={{ duration: 0.3, ease: 'easeOut' }} />
+        <div className="w-full bg-slate-800/80 h-1">
+          <motion.div
+            className="bg-gradient-to-r from-teal-500 to-emerald-400 h-full"
+            animate={{ width: `${progress}%` }} transition={{ duration: 0.3 }}
+          />
         </div>
-      </motion.div>
 
-      {/* ─── Playback Controls ─── */}
-      <motion.div className="flex items-center gap-2" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }}>
-        <motion.button onClick={stepBackward} disabled={currentIdx === 0}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-30 border border-slate-700"
-          whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-          <ChevronLeft className="w-5 h-5" />
-        </motion.button>
+        {/* Controls */}
+        <div className={cn('flex items-center gap-2 bg-slate-900/60', isPip ? 'px-2 py-2' : 'px-4 py-3')}>
+          <button onClick={stepBackward} disabled={itemIndex === 0}
+            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-30 border border-slate-700">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-        {playing ? (
-          <motion.button onClick={stopPlaying}
-            className="flex-1 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 border border-slate-600"
-            whileTap={{ scale: 0.98 }}>
-            <Pause className="w-4 h-4" /> Pause
-          </motion.button>
-        ) : (
-          <motion.button onClick={startPlaying} disabled={totalItems === 0}
-            className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20"
-            whileHover={{ scale: 1.02, boxShadow: '0 8px 30px rgba(20, 184, 166, 0.3)' }} whileTap={{ scale: 0.98 }}>
-            <Play className="w-4 h-4" />
-            {currentIdx > 0 ? 'Resume' : `Start ${viewMode === 'avatar' ? '🧍 Avatar' : '🖐️ Hand'} ${languageMode.toUpperCase()}`}
-          </motion.button>
+          {playing ? (
+            <button onClick={stop}
+              className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 border border-slate-600 transition">
+              <Pause className="w-4 h-4" /> Pause
+            </button>
+          ) : (
+            <button onClick={startPlaying} disabled={glossItems.length === 0}
+              className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white py-2 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition disabled:opacity-50">
+              <Play className="w-4 h-4" />
+              {itemIndex > 0 ? 'Resume' : 'Start Signing'}
+            </button>
+          )}
+
+          <button onClick={stepForward} disabled={itemIndex >= glossItems.length - 1}
+            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-30 border border-slate-700">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button onClick={reset}
+            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition border border-slate-700">
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Options ── */}
+      <div className={cn('flex flex-wrap items-center', isPip ? 'gap-2' : 'gap-3')}>
+        {/* Skin tone dots */}
+        {!isPip && (
+        <div className="flex items-center gap-1.5 bg-slate-800/60 rounded-xl p-1 border border-slate-700/50">
+          {SKIN_TONES.map(t => (
+            <button key={t.id} onClick={() => setSkinTone(t.id)} title={t.label}
+              className={`w-7 h-7 rounded-lg transition-all border-2 ${skinTone === t.id ? 'border-teal-400 scale-110' : 'border-transparent opacity-60 hover:opacity-100'}`}
+              style={{ background: t.color }} />
+          ))}
+        </div>
         )}
 
-        <motion.button onClick={stepForward} disabled={currentIdx >= totalItems - 1}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-30 border border-slate-700"
-          whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-          <ChevronRight className="w-5 h-5" />
-        </motion.button>
+        {/* Speed */}
+        <div className={cn('flex items-center gap-1 bg-slate-800/60 rounded-xl border border-slate-700/50', isPip ? 'p-0.5' : 'p-1')}>
+          {([0.5, 1, 1.5, 2] as const).map(v => (
+            <button key={v} onClick={() => { setSpeed(v); stateRef.current.speed = v }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${speed === v ? 'bg-teal-500 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'}`}>
+              {v}×
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <motion.button onClick={reset}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700"
-          whileHover={{ scale: 1.1, rotate: -180 }} whileTap={{ scale: 0.9 }} transition={{ duration: 0.3 }}>
-          <RotateCcw className="w-5 h-5" />
-        </motion.button>
-      </motion.div>
-
-      {/* ─── Sign sequence ─── */}
-      {signMode === 'signs' && glossItems.length > 0 && (
-        <motion.div className="flex flex-wrap gap-1.5 justify-center" variants={staggerContainer} initial="initial" animate="animate">
+      {/* ── Sign word chips ── */}
+      {!isPip && glossItems.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
           {glossItems.map((item, idx) => (
-            <motion.button key={idx} variants={staggerItem}
-              onClick={() => { setCurrentItemIndex(idx); setCurrentKeyframe(0); setCurrentLetterIndex(0) }}
+            <button key={idx}
+              onClick={() => {
+                stateRef.current = { ...stateRef.current, itemIndex: idx, keyframe: 0, letterIndex: 0 }
+                setItemIndex(idx); setKeyframe(0); setLetterIndex(0)
+              }}
               className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
-                idx === currentItemIndex
-                  ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md'
-                  : idx < currentItemIndex
+                idx === itemIndex
+                  ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md shadow-teal-500/25'
+                  : idx < itemIndex
                   ? 'bg-teal-500/15 text-teal-400'
                   : 'bg-slate-800 text-slate-500 hover:bg-slate-700 border border-slate-700'
-              }`}
-              whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.95 }}>
+              }`}>
               {item.type === 'word' ? `🤟 ${item.value}` : `🔤 ${item.value}`}
-            </motion.button>
+            </button>
           ))}
-        </motion.div>
+        </div>
       )}
 
-      {/* ─── Footer ─── */}
-      <motion.div className="text-xs text-slate-500 text-center space-y-1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-        <p>
-          {viewMode === 'avatar' ? '🧍 Full Avatar' : '🖐️ Hand'} •{' '}
-          {languageMode === 'asl' ? '🇺🇸 ASL' : '🇮🇳 ISL'} •{' '}
-          {signMode === 'signs' ? `${glossItems.length} signs (${wordCount} word signs)` : `${spellChars.length} letters`}
-          {viewMode === 'avatar' && ` • ${EMOTION_ICONS[detectedEmotion]} ${detectedEmotion}`}
-        </p>
-        <p className="text-[10px] opacity-70">
-          {viewMode === 'avatar' ? '3D Digital Interpreter with lip sync, facial expressions & emotional AI' : 'Interactive 3D hand model • Drag to rotate • Scroll to zoom'}
-        </p>
-      </motion.div>
+      <p className={cn('text-slate-500 text-center', isPip ? 'text-[9px] leading-tight' : 'text-[10px]')}>
+        {isPip ? `${glossItems.length} signs` : `3D Sign Language Interpreter · ${glossItems.length} signs detected`}
+      </p>
     </motion.div>
   )
 }

@@ -475,7 +475,7 @@ async def get_sign_vocabulary():
     }
 
 
-# Serve frontend static files
+
 FRONTEND_DIR = Path(__file__).parent.parent
 if (FRONTEND_DIR / "index.html").exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
